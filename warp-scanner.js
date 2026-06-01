@@ -141,6 +141,28 @@ async function scanEndpoint(ip, port) {
     };
 }
 
+function clearScreen() {
+    process.stdout.write('\x1Bc');
+}
+
+function displayLiveTable(results) {
+    clearScreen();
+    console.log('📊 LIVE RESULTS - Top Endpoints\n');
+    console.log('┌─────┬──────────────────────┬──────────┬────────────┐');
+    console.log('│ Rank│ IP:PORT              │ Latency  │ Speed      │');
+    console.log('├─────┼──────────────────────┼──────────┼────────────┤');
+    
+    results.slice(0, 10).forEach((result, index) => {
+        const rank = String(index + 1).padEnd(4, ' ');
+        const endpoint = `${result.ip}:${result.port}`.padEnd(20, ' ');
+        const latency = `${result.latency}ms`.padEnd(8, ' ');
+        const speed = `${result.speed} KB/s`.padEnd(10, ' ');
+        console.log(`│ ${rank}│ ${endpoint}│ ${latency}│ ${speed}│`);
+    });
+    
+    console.log('└─────┴──────────────────────┴──────────┴────────────┘\n');
+}
+
 async function main() {
     console.log('🚀 Warp Endpoint Scanner Started\n');
     console.log(`📊 Configuration:`);
@@ -180,22 +202,30 @@ async function main() {
                 const result = await scanEndpoint(task.ip, task.port);
                 processed++;
                 
-                if (processed % 100 === 0) {
+                if (result) {
+                    results.push(result);
+                    // Sort by speed and keep top results
+                    results.sort((a, b) => b.speed - a.speed);
+                }
+                
+                // Update every 50 scans
+                if (processed % 50 === 0) {
                     const progress = Math.round((processed / totalTasks) * 100);
                     const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
-                    process.stdout.write(`\r📊 Progress: ${progress}% (${processed}/${totalTasks}) - ${elapsed}s`);
+                    displayLiveTable(results);
+                    console.log(`⏱️  Progress: ${progress}% (${processed}/${totalTasks}) - ${elapsed}s - Found: ${results.length}\n`);
                 }
                 
                 return result;
             })
         );
-        
-        results.push(...batchResults.filter(r => r !== null));
     }
     
     const totalTime = ((performance.now() - startTime) / 1000).toFixed(2);
     
-    console.log(`\n\n✅ Scan Complete!\n`);
+    // Final display
+    clearScreen();
+    console.log('✅ SCAN COMPLETE!\n');
     console.log(`📈 Statistics:`);
     console.log(`   - Total scanned: ${totalTasks}`);
     console.log(`   - Found: ${results.length}`);
@@ -205,10 +235,16 @@ async function main() {
     // Sort results by speed
     results.sort((a, b) => b.speed - a.speed);
     
+    // Display final table
+    displayLiveTable(results);
+    
     // Generate report
     let report = `Warp Endpoint Scanner Results\n`;
     report += `Generated: ${new Date().toISOString()}\n`;
     report += `Total Found: ${results.length}\n`;
+    report += `Total Scanned: ${totalTasks}\n`;
+    report += `Success Rate: ${((results.length / totalTasks) * 100).toFixed(2)}%\n`;
+    report += `Time: ${totalTime}s\n`;
     report += `========================================\n\n`;
     
     report += `IP:PORT | Latency(ms) | Speed(KB/s)\n`;
@@ -221,12 +257,7 @@ async function main() {
     const filename = `results-${Date.now()}.txt`;
     fs.writeFileSync(filename, report);
     
-    console.log(`💾 Results saved to: ${filename}\n`);
-    
-    console.log(`🏆 Top 10 Fastest Endpoints:\n`);
-    results.slice(0, 10).forEach((result, index) => {
-        console.log(`${index + 1}. ${result.ip}:${result.port} - ${result.speed} KB/s (${result.latency}ms)`);
-    });
+    console.log(`\n💾 Results saved to: ${filename}\n`);
 }
 
 main().catch(console.error);
