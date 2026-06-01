@@ -4,7 +4,6 @@ const net = require('net');
 const http = require('http');
 const fs = require('fs');
 const { performance } = require('perf_hooks');
-const pLimit = require('p-limit');
 
 // Configuration
 const IP_RANGES = [
@@ -25,10 +24,9 @@ const PORTS = [
     7156, 7281, 7559, 8319, 8742, 8854, 8886
 ];
 
-const TIMEOUT = 3000; // 3 seconds
-const MIN_SPEED = 100; // 100 KB/s
-const CONCURRENT = 16; // 16 concurrent scans
-const TEST_SIZE = 1024 * 100; // 100 KB test file
+const TIMEOUT = 3000;
+const MIN_SPEED = 100;
+const CONCURRENT = 16;
 
 // Helper functions
 function ipToNumber(ip) {
@@ -102,7 +100,7 @@ function testSpeed(ip, port) {
             });
             
             res.on('end', () => {
-                const duration = (performance.now() - startTime) / 1000; // seconds
+                const duration = (performance.now() - startTime) / 1000;
                 const speedKBs = (receivedBytes / 1024) / duration;
                 resolve({ success: true, speed: Math.round(speedKBs), bytes: receivedBytes });
             });
@@ -122,14 +120,12 @@ function testSpeed(ip, port) {
 }
 
 async function scanEndpoint(ip, port) {
-    // Test connectivity
     const pingResult = await testPing(ip, port);
     
     if (!pingResult.success) {
         return null;
     }
     
-    // Test speed
     const speedResult = await testSpeed(ip, port);
     
     if (!speedResult.success || speedResult.speed < MIN_SPEED) {
@@ -154,7 +150,6 @@ async function main() {
     console.log(`   - Min Speed: ${MIN_SPEED} KB/s`);
     console.log(`   - Concurrent: ${CONCURRENT}\n`);
     
-    // Generate all IPs
     console.log('📍 Generating IP addresses...');
     let allIPs = [];
     for (const range of IP_RANGES) {
@@ -163,7 +158,6 @@ async function main() {
     }
     console.log(`✅ Total IPs to scan: ${allIPs.length}\n`);
     
-    // Create scan tasks
     const tasks = [];
     for (const ip of allIPs) {
         for (const port of PORTS) {
@@ -173,34 +167,31 @@ async function main() {
     
     console.log(`🔍 Starting scan (${tasks.length} tasks)...\n`);
     
-    const limit = pLimit(CONCURRENT);
+    const startTime = performance.now();
     const results = [];
     let processed = 0;
     const totalTasks = tasks.length;
     
-    const startTime = performance.now();
-    
-    const promises = tasks.map(task =>
-        limit(async () => {
-            const result = await scanEndpoint(task.ip, task.port);
-            processed++;
-            
-            // Progress indicator
-            if (processed % 100 === 0) {
-                const progress = Math.round((processed / totalTasks) * 100);
-                const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
-                process.stdout.write(`\r📊 Progress: ${progress}% (${processed}/${totalTasks}) - ${elapsed}s`);
-            }
-            
-            if (result) {
-                results.push(result);
-            }
-            
-            return result;
-        })
-    );
-    
-    await Promise.all(promises);
+    // Process in concurrent batches
+    for (let i = 0; i < tasks.length; i += CONCURRENT) {
+        const batch = tasks.slice(i, i + CONCURRENT);
+        const batchResults = await Promise.all(
+            batch.map(async (task) => {
+                const result = await scanEndpoint(task.ip, task.port);
+                processed++;
+                
+                if (processed % 100 === 0) {
+                    const progress = Math.round((processed / totalTasks) * 100);
+                    const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+                    process.stdout.write(`\r📊 Progress: ${progress}% (${processed}/${totalTasks}) - ${elapsed}s`);
+                }
+                
+                return result;
+            })
+        );
+        
+        results.push(...batchResults.filter(r => r !== null));
+    }
     
     const totalTime = ((performance.now() - startTime) / 1000).toFixed(2);
     
@@ -211,7 +202,7 @@ async function main() {
     console.log(`   - Success rate: ${((results.length / totalTasks) * 100).toFixed(2)}%`);
     console.log(`   - Time: ${totalTime}s\n`);
     
-    // Sort results by speed (fastest first)
+    // Sort results by speed
     results.sort((a, b) => b.speed - a.speed);
     
     // Generate report
@@ -227,13 +218,11 @@ async function main() {
         report += `${result.ip}:${result.port} | ${result.latency}ms | ${result.speed} KB/s\n`;
     });
     
-    // Save to file
     const filename = `results-${Date.now()}.txt`;
     fs.writeFileSync(filename, report);
     
     console.log(`💾 Results saved to: ${filename}\n`);
     
-    // Show top 10
     console.log(`🏆 Top 10 Fastest Endpoints:\n`);
     results.slice(0, 10).forEach((result, index) => {
         console.log(`${index + 1}. ${result.ip}:${result.port} - ${result.speed} KB/s (${result.latency}ms)`);
