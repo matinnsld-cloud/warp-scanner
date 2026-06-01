@@ -1,0 +1,25 @@
+{
+  "name": "warp-scanner",
+  "version": "1.0.0",
+  "description": "Scan Warp endpoints for connectivity, latency, and speed",
+  "main": "warp-scanner.js",
+  "scripts": {
+    "start": "node warp-scanner.js",
+    "scan": "node warp-scanner.js"
+  },
+  "keywords": [
+    "warp",
+    "cloudflare",
+    "endpoint",
+    "scanner",
+    "speed test"
+  ],
+  "author": "matinnsld-cloud",
+  "license": "MIT",
+  "dependencies": {
+    "p-limit": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
